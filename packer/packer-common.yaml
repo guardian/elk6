@@ -1,0 +1,12 @@
+builders:
+  - type: amazon-ebs
+    ami_name: {{ ami_build_name }}
+    instance_type: {{ t2.large }}
+    source_ami:  ami-4d46d534 #stock ubuntu 16.04 LTS
+    ssh_username: ubuntu
+provisioners:
+  #always update instance and provision CLI tools
+  - type: shell
+    inline:
+    - sudo apt-get -y update && sudo apt-get -y upgrade
+    - sudo apt-get -y install awscli
