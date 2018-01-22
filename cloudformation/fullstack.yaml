@@ -1,0 +1,163 @@
+#Note: you need to have a `service-linked role` for ES defined in your account
+#before deploying this.
+#See https://docs.aws.amazon.com/IAM/latest/UserGuide/using-service-linked-roles.html
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Elasticsearch, Logstash and Kibana (ELK) full stack
+Parameters:
+  NodeStorageSize:
+    Type: Number
+    Description: Amount of EBS storage to provision per cluster node
+  NodeStorageType:
+    Type: String
+    Description: Type of EBS storage to provision per node
+    Default: gp2
+    AllowedValues:
+      - standard
+      - gp2
+      - io1
+  InstanceCount:
+    Type: Number
+    Description: Number of instances in the cluster
+    Default: 2
+    MinValue: 2
+    MaxValue: 10
+  InstanceType:
+    Type: String
+    Description: Hardware type for each instance
+    Default: t2.medium.elasticsearch
+    AllowedValues:
+      - t2.medium.elasticsearch
+      - r4.large.elasticsearch
+      - r4.xlarge.elasticsearch
+      - r4.2xlarge.elasticsearch
+      - c4.large.elasticsearch
+      - c4.xlarge.elasticsearch
+      - c4.2xlarge.elasticsearch
+  ElasticsearchVersion:
+    Type: String
+    Description: Version of Elastic Search to deploy
+    Default: 6.0
+    AllowedValues:
+      - 6.0
+      - 5.3
+  AutomatedDailySnapshotHour:
+    Type: Number
+    Description: Hour to start the automated daily snapshot
+    Default: 0
+    MinValue: 0
+    MaxValue: 23
+  App:
+    Type: String
+    Description: Application tag
+  Stack:
+    Type: String
+    Description: Stack name tag
+  Stage:
+    Type: String
+    Description: Deployment stage
+    AllowedValues:
+      - DEV
+      - CODE
+      - PROD
+  VPCID:
+    Description: Virtual Private Cloud to deploy into
+    Type: AWS::EC2::VPC::Id
+  DeploySubnets:
+    Description: Subnets to deploy into
+    Type: List<AWS::EC2::Subnet::Id>
+Resources:
+  ### Security Groups
+  ElasticsearchDomainSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for elastic search domain
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !GetAtt LogstashNodeSG.GroupId
+          FromPort: 9200
+          ToPort: 9300
+          IpProtocol: tcp
+        - SourceSecurityGroupId: !GetAtt KibanaNodeSG.GroupId
+          FromPort: 9200
+          ToPort: 9300
+          IpProtocol: tcp
+      VpcId: !Ref VPCID
+  LogstashNodeSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for elastic search domain
+      #FIXME: placeholder value
+      SecurityGroupIngress: []
+      VpcId: !Ref VPCID
+  KibanaNodeSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for elastic search domain
+      #FIXME: placeholder value
+      SecurityGroupIngress: []
+      VpcId: !Ref VPCID
+
+  ### IAM elements
+  ElkServerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: ec2.amazonaws.com
+          Action: sts:AssumeRole
+      Path: "/"
+      #FIXME: placeholder value
+      Policies: []
+  ElkInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+      - !Ref ElkServerRole
+
+  ### Elasticsearch cluster
+  SearchDomain:
+    Type: AWS::Elasticsearch::Domain
+    Properties:
+      AccessPolicies:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Ref ElkServerRole
+            Action:
+              - es:ESHttpGet
+              - es:ESHttpHead
+              - es:ESHttpPost
+              - es:ESHttpPut
+      EBSOptions:
+        EBSEnabled: true
+        VolumeSize: !Ref NodeStorageSize
+        VolumeType: !Ref NodeStorageType
+      ElasticsearchClusterConfig:
+        InstanceCount: !Ref InstanceCount
+        ZoneAwarenessEnabled: true
+        InstanceType: !Ref InstanceType
+      ElasticsearchVersion: !Ref ElasticsearchVersion
+      SnapshotOptions:
+        AutomatedSnapshotStartHour: !Ref AutomatedDailySnapshotHour
+      Tags:
+        - Key: App
+          Value: !Ref App
+        - Key: Stack
+          Value: !Ref Stack
+        - Key: Stage
+          Value: !Ref Stage
+      VPCOptions:
+        SecurityGroupIds:
+          - !GetAtt ElasticsearchDomainSG.GroupId
+        SubnetIds: !Ref DeploySubnets
+Outputs:
+  ESArn:
+    Description: ARN for the elasticsearch domain
+    Value: !GetAtt SearchDomain.DomainArn
+  ESEndpoint:
+    Description: Endpoint for the elasticsearch cluster
+    Value: !GetAtt SearchDomain.DomainEndpoint
