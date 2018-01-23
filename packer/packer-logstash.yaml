@@ -1,0 +1,30 @@
+provisioners:
+  - type: shell
+    inline:
+      - mkdir /tmp/install
+  - type: file
+    source: ../config/logstash/jvm.options
+    destination: /tmp/install/jvm.options
+  - type: file
+    source: ../config/logstash/log4j2.properties
+    destination: /tmp/install/log4j2.properties
+  - type: file
+    source: ../config/logstash/logstash.yml
+    destination: /tmp/install/logstash.yml
+  - type: file
+    source: ../config/logstash/startup.options
+    destination: /tmp/install/startup.options
+  - type: shell
+    inline:
+      - curl ***REMOVED***logstash-6.1.2.deb > /tmp/install/logstash-6.1.2.deb
+      - sudo dpkg -i /tmp/install/logstash-6.1.2.deb
+      - echo ----------------------
+      - echo Installing settings from packer...
+      - echo ----------------------
+      - sudo mv /tmp/install/jvm.options /etc/logstash
+      - sudo mv /tmp/install/log4j2.properties /etc/logstash
+      - sudo mv /tmp/install/logstash.yml /etc/logstash
+      - sudo mv /tmp/install/startup.options /etc/logstash
+      - echo ----------------------
+      - echo Done
+      - echo ----------------------

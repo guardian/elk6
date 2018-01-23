@@ -109,7 +109,17 @@ Resources:
           Action: sts:AssumeRole
       Path: "/"
       #FIXME: placeholder value
-      Policies: []
+      Policies:
+      - Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - es:ESHttpGet
+              - es:ESHttpHead
+              - es:ESHttpPost
+              - es:ESHttpPut
+            Resources:
+              - !GetAtt SearchDomain.DomainArn
   ElkInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
@@ -120,18 +130,6 @@ Resources:
   SearchDomain:
     Type: AWS::Elasticsearch::Domain
     Properties:
-      AccessPolicies:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              AWS:
-                - !Ref ElkServerRole
-            Action:
-              - es:ESHttpGet
-              - es:ESHttpHead
-              - es:ESHttpPost
-              - es:ESHttpPut
       EBSOptions:
         EBSEnabled: true
         VolumeSize: !Ref NodeStorageSize
