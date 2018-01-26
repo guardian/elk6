@@ -17,13 +17,16 @@ Parameters:
       - io1
   InstanceCount:
     Type: Number
-    Description: Number of instances in the cluster
+    Description: Number of instances in the ElasticSearch cluster
     Default: 2
     MinValue: 2
     MaxValue: 10
+  KeyPair:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Root access keypair
   InstanceType:
     Type: String
-    Description: Hardware type for each instance
+    Description: Hardware type for each Elastic Search instance
     Default: t2.medium.elasticsearch
     AllowedValues:
       - t2.medium.elasticsearch
@@ -65,6 +68,22 @@ Parameters:
   DeploySubnets:
     Description: Subnets to deploy into
     Type: List<AWS::EC2::Subnet::Id>
+  LogstashBaseAmi:
+    Description: Packer-built AMI for Logstash
+    Type: String
+  LogstashInstanceType:
+    Description: Instance type for Logstash nodes
+    Type: String
+    Default: t2.nano
+    AllowedValues:
+      - t2.nano
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+  OfficeIpRange:
+    Type: String
+    Description: CIDR block of ip addresses to be allowed SSH access
 Resources:
   ### Security Groups
   ElasticsearchDomainSG:
@@ -73,20 +92,37 @@ Resources:
       GroupDescription: Security group for elastic search domain
       SecurityGroupIngress:
         - SourceSecurityGroupId: !GetAtt LogstashNodeSG.GroupId
-          FromPort: 9200
-          ToPort: 9300
+          FromPort: 80
+          ToPort: 80
           IpProtocol: tcp
         - SourceSecurityGroupId: !GetAtt KibanaNodeSG.GroupId
-          FromPort: 9200
-          ToPort: 9300
+          FromPort: 80
+          ToPort: 80
           IpProtocol: tcp
       VpcId: !Ref VPCID
   LogstashNodeSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Security group for elastic search domain
-      #FIXME: placeholder value
-      SecurityGroupIngress: []
+      GroupDescription: Instance security group for logstash
+      VpcId: !Ref VPCID
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !GetAtt LogstashLoadBalancerSG.GroupId
+          FromPort: 5044
+          ToPort: 5044
+          IpProtocol: tcp
+        - CidrIp: !Ref OfficeIpRange
+          FromPort: 22
+          ToPort: 22
+          IpProtocol: tcp
+  LogstashLoadBalancerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Load-balancer security group for Logstash
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 5044
+          ToPort: 5044
+          IpProtocol: tcp
       VpcId: !Ref VPCID
   KibanaNodeSG:
     Type: AWS::EC2::SecurityGroup
@@ -95,6 +131,92 @@ Resources:
       #FIXME: placeholder value
       SecurityGroupIngress: []
       VpcId: !Ref VPCID
+
+  ### Logstash
+  LogstashLoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      CrossZone: true
+      HealthCheck:
+        HealthyThreshold: "3"
+        Interval: "10"
+        Target: TCP:5044
+        Timeout: "3"
+        UnhealthyThreshold: "2"
+      Listeners:
+        - InstancePort: "5044"
+          InstanceProtocol: tcp
+          LoadBalancerPort: "5044"
+          Protocol: tcp
+      Scheme: internal
+      SecurityGroups:
+      - !GetAtt LogstashLoadBalancerSG.GroupId
+      Subnets: !Ref DeploySubnets
+      Tags:
+      - Key: App
+        Value: !Ref App
+      - Key: Stack
+        Value: !Ref Stack
+      - Key: Stage
+        Value: !Ref Stage
+  LogstashLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      IamInstanceProfile: !Ref ElkInstanceProfile
+      ImageId: !Ref LogstashBaseAmi
+      InstanceType: !Ref LogstashInstanceType
+      KeyName: !Ref KeyPair
+      SecurityGroups:
+      - !Ref LogstashNodeSG
+      UserData: !Base64
+        "Fn::Sub": |
+          #!/bin/bash
+
+          MEM_TOTAL=`awk '/MemTotal/ { print $2 }' /proc/meminfo`
+          HEAP_MAX=$(($MEM_TOTAL / 2))
+
+          if [ ! -d "/var/log/logstash" ]; then mkdir -p /var/log/logstash; chown logstash /var/log/logstash; fi
+          chown -R logstash /mnt
+          echo --------------------------
+          echo Updating configuration...
+          echo --------------------------
+
+          cat /home/install/jvm.options | sed s/-Xms256m/-Xms${!HEAP_MAX}k/ > /home/install/jvm.options.1
+          cat /home/install/jvm.options.1 | sed s/-Xmx1g/-Xmx${!HEAP_MAX}k/ > /etc/logstash/jvm.options
+          mv /home/install/log4j2.properties /etc/logstash
+          mv /home/install/logstash.yml /etc/logstash
+          mv /home/install/startup.options /etc/logstash
+
+          cat /home/install/conf.d/00-input-beats.conf | sed 's/{{ elasticsearch_endpoint }}/${SearchDomain.DomainEndpoint}/' > /etc/logstash/conf.d/00-input-beats.conf
+
+
+          echo --------------------------
+          echo Starting up...
+          echo --------------------------
+          systemctl restart logstash
+
+  LogstashAutoScaleGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      DesiredCapacity: "1"
+      HealthCheckGracePeriod: 300
+      HealthCheckType: ELB
+      LaunchConfigurationName: !Ref LogstashLaunchConfig
+      LoadBalancerNames:
+      - !Ref LogstashLoadBalancer
+      MaxSize: "8"
+      MinSize: "1"
+      Tags:
+      - Key: App
+        Value: !Ref App
+        PropagateAtLaunch: true
+      - Key: Stack
+        Value: !Ref Stack
+        PropagateAtLaunch: true
+      - Key: Stage
+        Value: !Ref Stage
+        PropagateAtLaunch: true
+      VPCZoneIdentifier: !Ref DeploySubnets
 
   ### IAM elements
   ElkServerRole:
@@ -108,18 +230,19 @@ Resources:
             Service: ec2.amazonaws.com
           Action: sts:AssumeRole
       Path: "/"
-      #FIXME: placeholder value
       Policies:
-      - Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Action:
-              - es:ESHttpGet
-              - es:ESHttpHead
-              - es:ESHttpPost
-              - es:ESHttpPut
-            Resources:
-              - !GetAtt SearchDomain.DomainArn
+      - PolicyName: AllowElasticSearchAccess
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpGet
+                - es:ESHttpHead
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource:
+                - !GetAtt SearchDomain.DomainArn
   ElkInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
@@ -159,3 +282,6 @@ Outputs:
   ESEndpoint:
     Description: Endpoint for the elasticsearch cluster
     Value: !GetAtt SearchDomain.DomainEndpoint
+  LogstashEndpoint:
+    Description: Endpoint for logstash beats
+    Value: !Sub ${LogstashLoadBalancer.DNSName}:5044

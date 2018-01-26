@@ -2,8 +2,8 @@ builders:
   - type: amazon-ebs
   #ami_name is provided by the calling script
     #ami_name: \{{ ami_build_name }\}
-    instance_type: t2.large
-    source_ami:  ami-4d46d534 #stock ubuntu 16.04 LTS
+    instance_type: t2.micro
+    source_ami:  ami-4d46d534 #stock ubuntu 16.04 LTS in eu-west-1
     ssh_username: ubuntu
 provisioners:
   #always update instance and provision CLI tools

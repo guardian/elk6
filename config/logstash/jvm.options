@@ -55,7 +55,10 @@
 
 # generate a heap dump when an allocation from the Java heap fails
 # heap dumps are created in the working directory of the JVM
--XX:+HeapDumpOnOutOfMemoryError
+#-XX:+HeapDumpOnOutOfMemoryError
+
+## exit on an out-of-memory error
+-XX:+ExitOnOutOfMemoryError
 
 # specify an alternative path for heap dumps
 # ensure the directory exists and has sufficient space

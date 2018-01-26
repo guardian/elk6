@@ -1,0 +1,5 @@
+provisioners:
+  - type: shell
+    inline:
+      - curl ***REMOVED***kibana-6.1.2.deb > /tmp/install/kibana-6.1.2.deb
+      - sudo dpkg -i /tmp/install/kibana-6.1.2.deb

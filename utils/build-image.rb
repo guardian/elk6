@@ -8,7 +8,7 @@ require 'awesome_print'
 my_dir = File.expand_path(File.dirname(__FILE__))
 puts "Running from #{my_dir}"
 
-ami_name ="packerbuild_#{ARGV[0]}_" #FIXME: add datetime in here
+ami_name ="packerbuild_#{ARGV[0]}_#{DateTime.now.strftime('%Y%m%d%H%M%S')}"
 
 common_data=nil
 open File.expand_path(my_dir + "/../packer/packer-common.yaml"),"r" do |f|
