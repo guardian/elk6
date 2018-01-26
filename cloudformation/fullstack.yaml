@@ -217,6 +217,79 @@ Resources:
         Value: !Ref Stage
         PropagateAtLaunch: true
       VPCZoneIdentifier: !Ref DeploySubnets
+  ## Logstash scaling
+  LogstashScaleUpPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref LogstashAutoScaleGroup
+      PolicyType: StepScaling
+      StepAdjustments:
+        #70-80% cpu
+        - MetricIntervalLowerBound: 0
+          MetricIntervalUpperBound: 10
+          ScalingAdjustment: 1
+        #80-90% cpu
+        - MetricIntervalLowerBound: 10
+          MetricIntervalUpperBound: 20
+          ScalingAdjustment: 2
+        #90-100% cpu
+        - MetricIntervalLowerBound: 20
+          ScalingAdjustment: 4
+  LogstashCpuHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions:
+        - !Ref LogstashScaleUpPolicy
+      AlarmDescription: Logstash cluster CPU high
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref LogstashAutoScaleGroup
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: "300"
+      EvaluationPeriods: "2"
+      Threshold: "70"
+
+  LogstashScaleDownPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref LogstashAutoScaleGroup
+      PolicyType: StepScaling
+      StepAdjustments:
+        #10-20% cpu
+        - MetricIntervalLowerBound: 0
+          MetricIntervalUpperBound: 10
+          ScalingAdjustment: -1
+        #5-10% cpu
+        - MetricIntervalLowerBound: 10
+          MetricIntervalUpperBound: 15
+          ScalingAdjustment: -2
+        #0-5% cpu
+        - MetricIntervalLowerBound: 15
+          ScalingAdjustment: -4
+
+  LogstashCpuLowAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions:
+        - !Ref LogstashScaleDownPolicy
+      AlarmDescription: Logstash cluster CPU low
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref LogstashAutoScaleGroup
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: "300"
+      EvaluationPeriods: "2"
+      Threshold: "20"
 
   ### IAM elements
   ElkServerRole:
