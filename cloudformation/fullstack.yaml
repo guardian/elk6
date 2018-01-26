@@ -81,6 +81,22 @@ Parameters:
       - t2.small
       - t2.medium
       - t2.large
+  KibanaBaseAmi:
+    Description: Packer-built AMI for Kibana
+    Type: String
+  KibanaInstanceType:
+    Description: Instance type for Kibana nodes
+    Type: String
+    Default: t2.nano
+    AllowedValues:
+      - t2.nano
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+  KibanaFriendlyCname:
+    Description: User-facing cname for the Kibana loadbalancer, needed for server config
+    Type: String
   OfficeIpRange:
     Type: String
     Description: CIDR block of ip addresses to be allowed SSH access
@@ -127,9 +143,26 @@ Resources:
   KibanaNodeSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Security group for elastic search domain
-      #FIXME: placeholder value
-      SecurityGroupIngress: []
+      GroupDescription: Security group for Kibana nodes
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !GetAtt KibanaLoadBalancerSG.GroupId
+          FromPort: 5601
+          ToPort: 5601
+          IpProtocol: tcp
+        - CidrIp: !Ref OfficeIpRange
+          FromPort: 22
+          ToPort: 22
+          IpProtocol: tcp
+      VpcId: !Ref VPCID
+  KibanaLoadBalancerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Load-balancer security group for Kibana
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
       VpcId: !Ref VPCID
 
   ### Logstash
@@ -284,6 +317,160 @@ Resources:
       Dimensions:
         - Name: AutoScalingGroupName
           Value: !Ref LogstashAutoScaleGroup
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: "300"
+      EvaluationPeriods: "2"
+      Threshold: "20"
+
+  ### Kibana
+  KibanaLoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      CrossZone: true
+      HealthCheck:
+        HealthyThreshold: "3"
+        Interval: "10"
+        Target: TCP:5601
+        Timeout: "3"
+        UnhealthyThreshold: "2"
+      Listeners:
+        - InstancePort: "5601"
+          InstanceProtocol: tcp
+          LoadBalancerPort: "80"
+          Protocol: tcp
+      Scheme: internal
+      SecurityGroups:
+      - !GetAtt KibanaLoadBalancerSG.GroupId
+      Subnets: !Ref DeploySubnets
+      Tags:
+      - Key: App
+        Value: !Ref App
+      - Key: Stack
+        Value: !Ref Stack
+      - Key: Stage
+        Value: !Ref Stage
+  KibanaLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      IamInstanceProfile: !Ref ElkInstanceProfile
+      ImageId: !Ref KibanaBaseAmi
+      InstanceType: !Ref KibanaInstanceType
+      KeyName: !Ref KeyPair
+      SecurityGroups:
+      - !Ref KibanaNodeSG
+      UserData: !Base64
+        "Fn::Sub": |
+          #!/bin/bash
+
+          MEM_TOTAL=`awk '/MemTotal/ { print $2 }' /proc/meminfo`
+          HEAP_MAX=$(($MEM_TOTAL / 2))
+
+          if [ ! -d "/var/log/kibana" ]; then mkdir -p /var/log/kibana; chown kibana /var/log/kibana; fi
+          chown -R kibana /mnt
+          echo --------------------------
+          echo Updating configuration...
+          echo --------------------------
+
+          cat /home/install/kibana.yml | sed 's/{{ elasticsearch-endpoint }}/${SearchDomain.DomainEndpoint}/' > /tmp/kibana.yml.1
+          cat /tmp/kibana.yml.1 | sed 's/{{ loadbalancer-friendly-name }}/${KibanaFriendlyCname}/' > /etc/kibana/kibana.yml
+          echo --------------------------
+          echo Starting up...
+          echo --------------------------
+          systemctl daemon-reload
+          systemctl enable kibana
+          systemctl restart kibana
+
+  KibanaAutoScaleGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      DesiredCapacity: "1"
+      HealthCheckGracePeriod: 300
+      HealthCheckType: ELB
+      LaunchConfigurationName: !Ref KibanaLaunchConfig
+      LoadBalancerNames:
+      - !Ref KibanaLoadBalancer
+      MaxSize: "8"
+      MinSize: "1"
+      Tags:
+      - Key: App
+        Value: !Ref App
+        PropagateAtLaunch: true
+      - Key: Stack
+        Value: !Ref Stack
+        PropagateAtLaunch: true
+      - Key: Stage
+        Value: !Ref Stage
+        PropagateAtLaunch: true
+      VPCZoneIdentifier: !Ref DeploySubnets
+  ## Kibana scaling
+  KibanaScaleUpPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref KibanaAutoScaleGroup
+      PolicyType: StepScaling
+      StepAdjustments:
+        #70-80% cpu
+        - MetricIntervalLowerBound: 0
+          MetricIntervalUpperBound: 10
+          ScalingAdjustment: 1
+        #80-90% cpu
+        - MetricIntervalLowerBound: 10
+          MetricIntervalUpperBound: 20
+          ScalingAdjustment: 2
+        #90-100% cpu
+        - MetricIntervalLowerBound: 20
+          ScalingAdjustment: 4
+  KibanaCpuHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions:
+        - !Ref KibanaScaleUpPolicy
+      AlarmDescription: Kibana cluster CPU high
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref KibanaAutoScaleGroup
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: "300"
+      EvaluationPeriods: "2"
+      Threshold: "70"
+
+  KibanaScaleDownPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref KibanaAutoScaleGroup
+      PolicyType: StepScaling
+      StepAdjustments:
+        #10-20% cpu
+        - MetricIntervalLowerBound: 0
+          MetricIntervalUpperBound: 10
+          ScalingAdjustment: -1
+        #5-10% cpu
+        - MetricIntervalLowerBound: 10
+          MetricIntervalUpperBound: 15
+          ScalingAdjustment: -2
+        #0-5% cpu
+        - MetricIntervalLowerBound: 15
+          ScalingAdjustment: -4
+
+  KibanaCpuLowAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions:
+        - !Ref KibanaScaleDownPolicy
+      AlarmDescription: Kibana cluster CPU low
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref KibanaAutoScaleGroup
       MetricName: CPUUtilization
       Namespace: AWS/EC2
       Statistic: Average

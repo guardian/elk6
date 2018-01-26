@@ -1,0 +1,10 @@
+elasticsearch:
+  #preserveHost: true
+  url: http://{{ elasticsearch-endpoint }}:80
+logging:
+  verbose: false #change this to get lots of logging
+path:
+  data: /mnt
+server:
+  host: 0.0.0.0
+  # name: {{ loadbalancer-friendly-name }}
