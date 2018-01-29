@@ -547,3 +547,10 @@ Outputs:
   LogstashEndpoint:
     Description: Endpoint for logstash beats
     Value: !Sub ${LogstashLoadBalancer.DNSName}:5044
+    Export:
+      Name: !Sub ${AWS::StackName}-LogstashEndpoint
+  KibanaLocation:
+    Description: Loadbalancer location for Kibana
+    Value: !Sub ${KibanaLoadBalancer.DNSName}
+    Export:
+      Name: !Sub ${AWS::StackName}-KibanaLocation
