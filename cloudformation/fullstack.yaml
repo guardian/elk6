@@ -1,5 +1,6 @@
 #Note: you need to have a `service-linked role` for ES defined in your account
-#before deploying this.
+#before deploying this. The easiest way to set this up is to manually create an ES domain
+#in your account and then delete it again immediately.
 #See https://docs.aws.amazon.com/IAM/latest/UserGuide/using-service-linked-roles.html
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Elasticsearch, Logstash and Kibana (ELK) full stack
@@ -226,6 +227,7 @@ Resources:
           echo --------------------------
           echo Starting up...
           echo --------------------------
+          systemctl enable logstash
           systemctl restart logstash
 
   LogstashAutoScaleGroup:

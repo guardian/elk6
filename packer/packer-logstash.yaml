@@ -20,6 +20,10 @@ provisioners:
     destination: /home/install/conf.d/00-input-beats.conf
   - type: shell
     inline:
-      - curl ***REMOVED***logstash-6.1.2.deb > /home/install/logstash-6.1.2.deb
+      - curl https://artifacts.elastic.co/downloads/logstash/logstash-6.1.2.deb > /home/install/logstash-6.1.2.deb
       - sudo dpkg -i /home/install/logstash-6.1.2.deb
       - sudo chown ubuntu /mnt
+      - curl https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-6.1.2-amd64.deb > /home/install/filebeat-6.1.2-amd64.deb
+      - sudo dpkg -i /home/install/filebeat-6.1.2-amd64.deb
+      - sudo systemctl disable logstash
+      - sudo systemctl disable filebeat

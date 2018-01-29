@@ -2,7 +2,6 @@
 
 require 'yaml'
 require 'json'
-require 'awesome_print'
 
 #START MAIN
 my_dir = File.expand_path(File.dirname(__FILE__))
@@ -27,7 +26,6 @@ combined_data = common_data.merge(specific_data) do |key,oldval,newval|
   oldval + newval
 end
 
-#ap combined_data
 packer_json_name = File.expand_path(my_dir + "/../packer/tempbuild.json")
 open packer_json_name,"w" do |f|
   f.write(JSON.generate(combined_data))

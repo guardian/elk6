@@ -2,7 +2,7 @@
 
 # Xms represents the initial size of total heap space
 # Xmx represents the maximum size of total heap space
-
+#These are overridden by the user-data script provided by cloudformation
 -Xms256m
 -Xmx1g
 
