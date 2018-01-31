@@ -30,6 +30,16 @@ simple enough to install from your favourite package management system
 - Most of the parameters should be self-explanatory.  **Note** - you must specify *exactly two* subnets to deploy into, because of how Amazon's ElasticSearch service works.
 - Paste in the AMI IDs of the Logstash and Kibana images that you created
 
+### Step two A - tweaks
+
+- In order to allow Logstash to talk directly to ElasticSearch you must manually set a policy on your created ElasticSearch domain to allow nodes to access without IAM authentication.  
+- In the AWS Console go to Elasticsearch Service, then select the Domain that CloudFormation created for you
+- Click 'Modify Access Policy' and then select 'Do Not Require Signing with an IAM Credential' from the dropdown list
+- Click Submit
+- Wait for the change to take effect
+
+This means that only the hosts identified in the Security Groups for the domain can access it.  The Cloudformation sets that up as the created Logstash and Kibana nodes only, anything else will be firewalled out.  I'd also recommend deploying this in a private VPC to minimise the attack surface.
+
 ### Step three - use it
 
 - Install Filebeat or similar onto the nodes you want to monitor - see https://www.elastic.co/products/beats for more information
