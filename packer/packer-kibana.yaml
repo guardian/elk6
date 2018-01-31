@@ -1,0 +1,12 @@
+provisioners:
+  - type: shell
+    inline:
+      - sudo mkdir -p /home/install
+      - sudo chown -R ubuntu /home/install
+  - type: file
+    source: ../config/kibana/kibana.yml
+    destination: /home/install/kibana.yml
+  - type: shell
+    inline:
+      - curl https://artifacts.elastic.co/downloads/kibana/kibana-6.0.1-amd64.deb > /home/install/kibana-6.0.1.deb
+      - sudo dpkg -i /home/install/kibana-6.0.1.deb

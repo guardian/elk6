@@ -1,0 +1,556 @@
+#Note: you need to have a `service-linked role` for ES defined in your account
+#before deploying this. The easiest way to set this up is to manually create an ES domain
+#in your account and then delete it again immediately.
+#See https://docs.aws.amazon.com/IAM/latest/UserGuide/using-service-linked-roles.html
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Elasticsearch, Logstash and Kibana (ELK) full stack
+Parameters:
+  NodeStorageSize:
+    Type: Number
+    Description: Amount of EBS storage to provision per cluster node
+  NodeStorageType:
+    Type: String
+    Description: Type of EBS storage to provision per node
+    Default: gp2
+    AllowedValues:
+      - standard
+      - gp2
+      - io1
+  InstanceCount:
+    Type: Number
+    Description: Number of instances in the ElasticSearch cluster
+    Default: 2
+    MinValue: 2
+    MaxValue: 10
+  KeyPair:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Root access keypair
+  InstanceType:
+    Type: String
+    Description: Hardware type for each Elastic Search instance
+    Default: t2.medium.elasticsearch
+    AllowedValues:
+      - t2.medium.elasticsearch
+      - r4.large.elasticsearch
+      - r4.xlarge.elasticsearch
+      - r4.2xlarge.elasticsearch
+      - c4.large.elasticsearch
+      - c4.xlarge.elasticsearch
+      - c4.2xlarge.elasticsearch
+  ElasticsearchVersion:
+    Type: String
+    Description: Version of Elastic Search to deploy
+    Default: 6.0
+    AllowedValues:
+      - 6.0
+      - 5.3
+  AutomatedDailySnapshotHour:
+    Type: Number
+    Description: Hour to start the automated daily snapshot
+    Default: 0
+    MinValue: 0
+    MaxValue: 23
+  App:
+    Type: String
+    Description: Application tag
+  Stack:
+    Type: String
+    Description: Stack name tag
+  Stage:
+    Type: String
+    Description: Deployment stage
+    AllowedValues:
+      - DEV
+      - CODE
+      - PROD
+  VPCID:
+    Description: Virtual Private Cloud to deploy into
+    Type: AWS::EC2::VPC::Id
+  DeploySubnets:
+    Description: Subnets to deploy into
+    Type: List<AWS::EC2::Subnet::Id>
+  LogstashBaseAmi:
+    Description: Packer-built AMI for Logstash
+    Type: String
+  LogstashInstanceType:
+    Description: Instance type for Logstash nodes
+    Type: String
+    Default: t2.nano
+    AllowedValues:
+      - t2.nano
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+  KibanaBaseAmi:
+    Description: Packer-built AMI for Kibana
+    Type: String
+  KibanaInstanceType:
+    Description: Instance type for Kibana nodes
+    Type: String
+    Default: t2.nano
+    AllowedValues:
+      - t2.nano
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+  KibanaFriendlyCname:
+    Description: User-facing cname for the Kibana loadbalancer, needed for server config
+    Type: String
+  OfficeIpRange:
+    Type: String
+    Description: CIDR block of ip addresses to be allowed SSH access
+Resources:
+  ### Security Groups
+  ElasticsearchDomainSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for elastic search domain
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !GetAtt LogstashNodeSG.GroupId
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+        - SourceSecurityGroupId: !GetAtt KibanaNodeSG.GroupId
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+      VpcId: !Ref VPCID
+  LogstashNodeSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Instance security group for logstash
+      VpcId: !Ref VPCID
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !GetAtt LogstashLoadBalancerSG.GroupId
+          FromPort: 5044
+          ToPort: 5044
+          IpProtocol: tcp
+        - CidrIp: !Ref OfficeIpRange
+          FromPort: 22
+          ToPort: 22
+          IpProtocol: tcp
+  LogstashLoadBalancerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Load-balancer security group for Logstash
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 5044
+          ToPort: 5044
+          IpProtocol: tcp
+      VpcId: !Ref VPCID
+  KibanaNodeSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Kibana nodes
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !GetAtt KibanaLoadBalancerSG.GroupId
+          FromPort: 5601
+          ToPort: 5601
+          IpProtocol: tcp
+        - CidrIp: !Ref OfficeIpRange
+          FromPort: 22
+          ToPort: 22
+          IpProtocol: tcp
+      VpcId: !Ref VPCID
+  KibanaLoadBalancerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Load-balancer security group for Kibana
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+      VpcId: !Ref VPCID
+
+  ### Logstash
+  LogstashLoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      CrossZone: true
+      HealthCheck:
+        HealthyThreshold: "3"
+        Interval: "10"
+        Target: TCP:5044
+        Timeout: "3"
+        UnhealthyThreshold: "2"
+      Listeners:
+        - InstancePort: "5044"
+          InstanceProtocol: tcp
+          LoadBalancerPort: "5044"
+          Protocol: tcp
+      Scheme: internal
+      SecurityGroups:
+      - !GetAtt LogstashLoadBalancerSG.GroupId
+      Subnets: !Ref DeploySubnets
+      Tags:
+      - Key: App
+        Value: !Ref App
+      - Key: Stack
+        Value: !Ref Stack
+      - Key: Stage
+        Value: !Ref Stage
+  LogstashLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      IamInstanceProfile: !Ref ElkInstanceProfile
+      ImageId: !Ref LogstashBaseAmi
+      InstanceType: !Ref LogstashInstanceType
+      KeyName: !Ref KeyPair
+      SecurityGroups:
+      - !Ref LogstashNodeSG
+      UserData: !Base64
+        "Fn::Sub": |
+          #!/bin/bash
+
+          MEM_TOTAL=`awk '/MemTotal/ { print $2 }' /proc/meminfo`
+          HEAP_MAX=$(($MEM_TOTAL / 2))
+
+          if [ ! -d "/var/log/logstash" ]; then mkdir -p /var/log/logstash; chown logstash /var/log/logstash; fi
+          chown -R logstash /mnt
+          echo --------------------------
+          echo Updating configuration...
+          echo --------------------------
+
+          cat /home/install/jvm.options | sed s/-Xms256m/-Xms${!HEAP_MAX}k/ > /home/install/jvm.options.1
+          cat /home/install/jvm.options.1 | sed s/-Xmx1g/-Xmx${!HEAP_MAX}k/ > /etc/logstash/jvm.options
+          mv /home/install/log4j2.properties /etc/logstash
+          mv /home/install/logstash.yml /etc/logstash
+          mv /home/install/startup.options /etc/logstash
+
+          cat /home/install/conf.d/00-input-beats.conf | sed 's/{{ elasticsearch_endpoint }}/${SearchDomain.DomainEndpoint}/' > /etc/logstash/conf.d/00-input-beats.conf
+
+
+          echo --------------------------
+          echo Starting up...
+          echo --------------------------
+          systemctl enable logstash
+          systemctl restart logstash
+
+  LogstashAutoScaleGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      DesiredCapacity: "1"
+      HealthCheckGracePeriod: 300
+      HealthCheckType: ELB
+      LaunchConfigurationName: !Ref LogstashLaunchConfig
+      LoadBalancerNames:
+      - !Ref LogstashLoadBalancer
+      MaxSize: "8"
+      MinSize: "1"
+      Tags:
+      - Key: App
+        Value: !Ref App
+        PropagateAtLaunch: true
+      - Key: Stack
+        Value: !Ref Stack
+        PropagateAtLaunch: true
+      - Key: Stage
+        Value: !Ref Stage
+        PropagateAtLaunch: true
+      VPCZoneIdentifier: !Ref DeploySubnets
+  ## Logstash scaling
+  LogstashScaleUpPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref LogstashAutoScaleGroup
+      PolicyType: StepScaling
+      StepAdjustments:
+        #70-80% cpu
+        - MetricIntervalLowerBound: 0
+          MetricIntervalUpperBound: 10
+          ScalingAdjustment: 1
+        #80-90% cpu
+        - MetricIntervalLowerBound: 10
+          MetricIntervalUpperBound: 20
+          ScalingAdjustment: 2
+        #90-100% cpu
+        - MetricIntervalLowerBound: 20
+          ScalingAdjustment: 4
+  LogstashCpuHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions:
+        - !Ref LogstashScaleUpPolicy
+      AlarmDescription: Logstash cluster CPU high
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref LogstashAutoScaleGroup
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: "300"
+      EvaluationPeriods: "2"
+      Threshold: "70"
+
+  LogstashScaleDownPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref LogstashAutoScaleGroup
+      PolicyType: StepScaling
+      StepAdjustments:
+        #10-20% cpu
+        - MetricIntervalLowerBound: 0
+          MetricIntervalUpperBound: 10
+          ScalingAdjustment: -1
+        #5-10% cpu
+        - MetricIntervalLowerBound: 10
+          MetricIntervalUpperBound: 15
+          ScalingAdjustment: -2
+        #0-5% cpu
+        - MetricIntervalLowerBound: 15
+          ScalingAdjustment: -4
+
+  LogstashCpuLowAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions:
+        - !Ref LogstashScaleDownPolicy
+      AlarmDescription: Logstash cluster CPU low
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref LogstashAutoScaleGroup
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: "300"
+      EvaluationPeriods: "2"
+      Threshold: "20"
+
+  ### Kibana
+  KibanaLoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      CrossZone: true
+      HealthCheck:
+        HealthyThreshold: "3"
+        Interval: "10"
+        Target: TCP:5601
+        Timeout: "3"
+        UnhealthyThreshold: "2"
+      Listeners:
+        - InstancePort: "5601"
+          InstanceProtocol: tcp
+          LoadBalancerPort: "80"
+          Protocol: tcp
+      Scheme: internal
+      SecurityGroups:
+      - !GetAtt KibanaLoadBalancerSG.GroupId
+      Subnets: !Ref DeploySubnets
+      Tags:
+      - Key: App
+        Value: !Ref App
+      - Key: Stack
+        Value: !Ref Stack
+      - Key: Stage
+        Value: !Ref Stage
+  KibanaLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      IamInstanceProfile: !Ref ElkInstanceProfile
+      ImageId: !Ref KibanaBaseAmi
+      InstanceType: !Ref KibanaInstanceType
+      KeyName: !Ref KeyPair
+      SecurityGroups:
+      - !Ref KibanaNodeSG
+      UserData: !Base64
+        "Fn::Sub": |
+          #!/bin/bash
+
+          MEM_TOTAL=`awk '/MemTotal/ { print $2 }' /proc/meminfo`
+          HEAP_MAX=$(($MEM_TOTAL / 2))
+
+          if [ ! -d "/var/log/kibana" ]; then mkdir -p /var/log/kibana; chown kibana /var/log/kibana; fi
+          chown -R kibana /mnt
+          echo --------------------------
+          echo Updating configuration...
+          echo --------------------------
+
+          cat /home/install/kibana.yml | sed 's/{{ elasticsearch-endpoint }}/${SearchDomain.DomainEndpoint}/' > /tmp/kibana.yml.1
+          cat /tmp/kibana.yml.1 | sed 's/{{ loadbalancer-friendly-name }}/${KibanaFriendlyCname}/' > /etc/kibana/kibana.yml
+          echo --------------------------
+          echo Starting up...
+          echo --------------------------
+          systemctl daemon-reload
+          systemctl enable kibana
+          systemctl restart kibana
+
+  KibanaAutoScaleGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      DesiredCapacity: "1"
+      HealthCheckGracePeriod: 300
+      HealthCheckType: ELB
+      LaunchConfigurationName: !Ref KibanaLaunchConfig
+      LoadBalancerNames:
+      - !Ref KibanaLoadBalancer
+      MaxSize: "8"
+      MinSize: "1"
+      Tags:
+      - Key: App
+        Value: !Ref App
+        PropagateAtLaunch: true
+      - Key: Stack
+        Value: !Ref Stack
+        PropagateAtLaunch: true
+      - Key: Stage
+        Value: !Ref Stage
+        PropagateAtLaunch: true
+      VPCZoneIdentifier: !Ref DeploySubnets
+  ## Kibana scaling
+  KibanaScaleUpPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref KibanaAutoScaleGroup
+      PolicyType: StepScaling
+      StepAdjustments:
+        #70-80% cpu
+        - MetricIntervalLowerBound: 0
+          MetricIntervalUpperBound: 10
+          ScalingAdjustment: 1
+        #80-90% cpu
+        - MetricIntervalLowerBound: 10
+          MetricIntervalUpperBound: 20
+          ScalingAdjustment: 2
+        #90-100% cpu
+        - MetricIntervalLowerBound: 20
+          ScalingAdjustment: 4
+  KibanaCpuHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions:
+        - !Ref KibanaScaleUpPolicy
+      AlarmDescription: Kibana cluster CPU high
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref KibanaAutoScaleGroup
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: "300"
+      EvaluationPeriods: "2"
+      Threshold: "70"
+
+  KibanaScaleDownPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref KibanaAutoScaleGroup
+      PolicyType: StepScaling
+      StepAdjustments:
+        #10-20% cpu
+        - MetricIntervalLowerBound: 0
+          MetricIntervalUpperBound: 10
+          ScalingAdjustment: -1
+        #5-10% cpu
+        - MetricIntervalLowerBound: 10
+          MetricIntervalUpperBound: 15
+          ScalingAdjustment: -2
+        #0-5% cpu
+        - MetricIntervalLowerBound: 15
+          ScalingAdjustment: -4
+
+  KibanaCpuLowAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions:
+        - !Ref KibanaScaleDownPolicy
+      AlarmDescription: Kibana cluster CPU low
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref KibanaAutoScaleGroup
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: "300"
+      EvaluationPeriods: "2"
+      Threshold: "20"
+
+  ### IAM elements
+  ElkServerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: ec2.amazonaws.com
+          Action: sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: AllowElasticSearchAccess
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpGet
+                - es:ESHttpHead
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource:
+                - !GetAtt SearchDomain.DomainArn
+  ElkInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+      - !Ref ElkServerRole
+
+  ### Elasticsearch cluster
+  SearchDomain:
+    Type: AWS::Elasticsearch::Domain
+    Properties:
+      EBSOptions:
+        EBSEnabled: true
+        VolumeSize: !Ref NodeStorageSize
+        VolumeType: !Ref NodeStorageType
+      ElasticsearchClusterConfig:
+        InstanceCount: !Ref InstanceCount
+        ZoneAwarenessEnabled: true
+        InstanceType: !Ref InstanceType
+      ElasticsearchVersion: !Ref ElasticsearchVersion
+      SnapshotOptions:
+        AutomatedSnapshotStartHour: !Ref AutomatedDailySnapshotHour
+      Tags:
+        - Key: App
+          Value: !Ref App
+        - Key: Stack
+          Value: !Ref Stack
+        - Key: Stage
+          Value: !Ref Stage
+      VPCOptions:
+        SecurityGroupIds:
+          - !GetAtt ElasticsearchDomainSG.GroupId
+        SubnetIds: !Ref DeploySubnets
+Outputs:
+  ESArn:
+    Description: ARN for the elasticsearch domain
+    Value: !GetAtt SearchDomain.DomainArn
+  ESEndpoint:
+    Description: Endpoint for the elasticsearch cluster
+    Value: !GetAtt SearchDomain.DomainEndpoint
+  LogstashEndpoint:
+    Description: Endpoint for logstash beats
+    Value: !Sub ${LogstashLoadBalancer.DNSName}:5044
+    Export:
+      Name: !Sub ${AWS::StackName}-LogstashEndpoint
+  KibanaLocation:
+    Description: Loadbalancer location for Kibana
+    Value: !Sub ${KibanaLoadBalancer.DNSName}
+    Export:
+      Name: !Sub ${AWS::StackName}-KibanaLocation

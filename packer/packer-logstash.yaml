@@ -1,0 +1,29 @@
+provisioners:
+  - type: shell
+    inline:
+      - sudo mkdir -p /home/install/conf.d
+      - sudo chown -R ubuntu /home/install
+  - type: file
+    source: ../config/logstash/jvm.options
+    destination: /home/install/jvm.options
+  - type: file
+    source: ../config/logstash/log4j2.properties
+    destination: /home/install/log4j2.properties
+  - type: file
+    source: ../config/logstash/logstash.yml
+    destination: /home/install/logstash.yml
+  - type: file
+    source: ../config/logstash/startup.options
+    destination: /home/install/startup.options
+  - type: file
+    source: ../config/logstash/conf.d/00-input-beats.conf
+    destination: /home/install/conf.d/00-input-beats.conf
+  - type: shell
+    inline:
+      - curl https://artifacts.elastic.co/downloads/logstash/logstash-6.1.2.deb > /home/install/logstash-6.1.2.deb
+      - sudo dpkg -i /home/install/logstash-6.1.2.deb
+      - sudo chown ubuntu /mnt
+      - curl https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-6.1.2-amd64.deb > /home/install/filebeat-6.1.2-amd64.deb
+      - sudo dpkg -i /home/install/filebeat-6.1.2-amd64.deb
+      - sudo systemctl disable logstash
+      - sudo systemctl disable filebeat
