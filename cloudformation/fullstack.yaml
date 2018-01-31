@@ -75,9 +75,8 @@ Parameters:
   LogstashInstanceType:
     Description: Instance type for Logstash nodes
     Type: String
-    Default: t2.nano
+    Default: t2.micro
     AllowedValues:
-      - t2.nano
       - t2.micro
       - t2.small
       - t2.medium
