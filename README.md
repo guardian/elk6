@@ -46,3 +46,17 @@ This means that only the hosts identified in the Security Groups for the domain 
 - Use the Logstash endpoint as the target for Filebeat etc. to push to
 - Set up a DNS CNAME to get a more usable Kibana endpoint than the auto-generated one
 - The Logstash and Kibana endpoints are shown as CloudFormation outputs and they are exported.  You can either use these directly in your Beats configs (not recommended) or import them as external references into another CloudFormation stack (see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/walkthrough-crossstackref.html) and pass that value into your Beats config.
+
+
+## Logstash filter configurations
+
+The deployment and testing of filter configurations needs some work.  At present, any files that are present in config/logstash/conf.d will be placed into /etc/logstash/conf.d as the logstash image is built, with no testing.
+
+Syntax errors will result in logstash failing to start up and constant restarts from the autoscaling group.
+
+This will be improved in a future PR...
+
+## Instance details and security
+
+The Logstash and Kibana instances are built from Ubuntu 16.04 LTS by default (but it's simple to change the source AMI in the packer-common.yaml configuration).  A full update is run during the image build process, so to keep up to date with security patches
+it's recommended to rebuild your instances regularly.

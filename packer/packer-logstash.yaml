@@ -20,10 +20,20 @@ provisioners:
     destination: /home/install/conf.d/00-input-beats.conf
   - type: shell
     inline:
+      - echo Downloading and installing
       - curl https://artifacts.elastic.co/downloads/logstash/logstash-6.1.2.deb > /home/install/logstash-6.1.2.deb
       - sudo dpkg -i /home/install/logstash-6.1.2.deb
       - sudo chown ubuntu /mnt
+      - echo Setting configuration permissions
+      - sudo chown ubuntu /etc/logstash/conf.d
+      - echo Downloading filebeat
       - curl https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-6.1.2-amd64.deb > /home/install/filebeat-6.1.2-amd64.deb
-      - sudo dpkg -i /home/install/filebeat-6.1.2-amd64.deb
+      - echo Disabling automatic start until provisioned by Cloudformation
       - sudo systemctl disable logstash
-      - sudo systemctl disable filebeat
+      - echo All done
+  - type: file
+    source: ../config/logstash/conf.d
+    destination: /etc/logstash
+  - type: shell
+    inline:
+      - sudo chown -R root /etc/logstash/conf.d
