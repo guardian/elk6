@@ -100,6 +100,10 @@ Parameters:
   OfficeIpRange:
     Type: String
     Description: CIDR block of ip addresses to be allowed SSH access
+  LoadBalancerCertId:
+    Description: ARN of an SSL certificate to use for the Kibana frontend loadbalancer
+    Type: String
+    AllowedPattern: arn:aws:acm:.*
 Resources:
   ### Security Groups
   ElasticsearchDomainSG:
@@ -135,6 +139,7 @@ Resources:
     Properties:
       GroupDescription: Load-balancer security group for Logstash
       SecurityGroupIngress:
+        #this assumes that we are in a firewalled VPC
         - CidrIp: 0.0.0.0/0
           FromPort: 5044
           ToPort: 5044
@@ -160,8 +165,8 @@ Resources:
       GroupDescription: Load-balancer security group for Kibana
       SecurityGroupIngress:
         - CidrIp: 0.0.0.0/0
-          FromPort: 80
-          ToPort: 80
+          FromPort: 443
+          ToPort: 443
           IpProtocol: tcp
       VpcId: !Ref VPCID
 
@@ -338,9 +343,10 @@ Resources:
         UnhealthyThreshold: "2"
       Listeners:
         - InstancePort: "5601"
-          InstanceProtocol: tcp
-          LoadBalancerPort: "80"
-          Protocol: tcp
+          InstanceProtocol: http
+          LoadBalancerPort: "443"
+          Protocol: https
+          SSLCertificateId: !Ref LoadBalancerCertId
       Scheme: internal
       SecurityGroups:
       - !GetAtt KibanaLoadBalancerSG.GroupId
