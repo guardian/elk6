@@ -22,7 +22,7 @@ def check_cluster(address)
   raw_json = Net::HTTP.get(uri)
   content = JSON.parse(raw_json)
   $logger.info("Connected to #{content['cluster_name']}, ES version #{content['version']['number']}. Status is #{content['status']}")
-  raise RuntimeException "Server is in an error state" if content['status'] != 200
+  raise RuntimeError, "Server is in an error state" if content['status'] != 200
 end #def check_cluster
 
 def check_index(address, indexname)
@@ -32,7 +32,7 @@ def check_index(address, indexname)
   content = JSON.parse(response.body)
   if response.code != '200'
     ap content
-    raise RuntimeException "Could not access index #{indexname}, server returned a #{response.code} error"
+    raise RuntimeError, "Could not access index #{indexname}, server returned a #{response.code} error"
   end
   $logger.info("Got information about index #{indexname}")
   content
@@ -48,7 +48,7 @@ def download_next_page(http,address,indexname, outputdir, page_number, page_size
 
   if response.code != '200'
     $logger.error(response.body)
-    raise RuntimeException "Could not download page data, server returned #{response.code} error"
+    raise RuntimeError, "Could not download page data, server returned #{response.code} error"
   end
 
   content = JSON.parse(response.body)
