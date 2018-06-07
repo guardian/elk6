@@ -47,7 +47,7 @@ def download_next_page(http,address,indexname, outputdir, page_number, page_size
   request = Net::HTTP::Post.new(uri)
   request['Content-Type'] = 'application/json'
   
-  request.body = JSON.generate({"query":{"match_all": {}}, "sort":[{"timestamp":"asc"}]})
+  request.body = JSON.generate({"query":{"match_all": {}}, "sort":[{"#{sortfield}":"asc"}]})
   response = http.request request
 
   if response.code != '200'
