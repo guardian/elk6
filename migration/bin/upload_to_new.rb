@@ -114,6 +114,7 @@ def upload_data_file(address, indexname, datafile, strip_fields)
 
   bulkdata = datacontent['hits']['hits'].reduce("") { |acc, entry|
     entry.delete('_score')
+    entry.delete('sort')
     entry_source = entry.delete('_source')
     strip_fields.each {|field_to_remove|
       #$logger.debug("Removing field #{field_to_remove}")
@@ -134,6 +135,7 @@ def upload_data_file(address, indexname, datafile, strip_fields)
     reply = JSON.parse(response.body)
     #ap reply
     unless response.code=='200'
+      print bulkdata
       ap reply
       raise RuntimeError, "Could not upload data, server returned #{response.code} error"
     end #unless response.code==200

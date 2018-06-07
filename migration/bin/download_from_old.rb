@@ -14,6 +14,7 @@ opts = Trollop::options do
   opt :index, "Download this index", :type=>:string
   opt :output, "Output json files to this directory", :type=>:string,:default=>Dir.pwd
   opt :chunksize, "Get this many records per json file", :type=>:integer, :default=>1000
+  opt :sortfield, "Sort by this field when retrieving", :type=>:string, :default=>"timestamp"
 end
 
 def check_cluster(address)
@@ -38,12 +39,15 @@ def check_index(address, indexname)
   content
 end
 
-def download_next_page(http,address,indexname, outputdir, page_number, page_size)
+def download_next_page(http,address,indexname, outputdir, page_number, page_size, sortfield)
   #returns TRUE if more results, otherwise FALSE
   from = page_number * page_size
   uri = URI("#{address}/#{indexname}/_search?from=#{from}&size=#{page_size}")
   $logger.debug("Connecting to #{uri}...")
   request = Net::HTTP::Post.new(uri)
+  request['Content-Type'] = 'application/json'
+  
+  request.body = JSON.generate({"query":{"match_all": {}}, "sort":[{"timestamp":"asc"}]})
   response = http.request request
 
   if response.code != '200'
@@ -81,10 +85,11 @@ end #open
 page_number=0
 
 search_uri = URI("#{opts.cluster}/#{opts[:index]}/_search")
+
 Net::HTTP.start(search_uri.host, search_uri.port) do |http|
   more_hits=true
   while more_hits
-    more_hits=download_next_page(http, opts.cluster, opts[:index], opts.output, page_number, opts.chunksize)
+    more_hits=download_next_page(http, opts.cluster, opts[:index], opts.output, page_number, opts.chunksize, opts.sortfield)
     ap more_hits
     page_number+=1
   end #while True
