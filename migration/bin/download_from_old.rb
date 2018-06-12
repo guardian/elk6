@@ -47,7 +47,7 @@ def download_next_page(http,address,indexname, outputdir, page_number, page_size
 
   if File.exists?(outfile) and not redownload
     $logger.info("File #{outfile} already exists, skipping download of this chunk")
-    return
+    return true
   end
 
   uri = URI("#{address}/#{indexname}/_search?from=#{from}&size=#{page_size}")
@@ -61,7 +61,7 @@ def download_next_page(http,address,indexname, outputdir, page_number, page_size
     response = http.request request
 
     if response.code == '504' or response.code=='503'
-      $logger.warning("Got timeout error #{response.code} from server, retrying in 10s")
+      $logger.warn("Got timeout error #{response.code} from server, retrying in 10s")
       sleep(10)
     elsif response.code != '200'
       $logger.error(response.body)
