@@ -120,6 +120,9 @@ def upload_data_file(address, indexname, datafile, strip_fields)
       #$logger.debug("Removing field #{field_to_remove}")
       entry_source.delete(field_to_remove)
     }
+    if entry.has_key?('_id')
+        entry['_id'] = entry['_id'][0..511] if entry['_id'].length>512
+    end
     acc + JSON.generate({"index"=>entry}) + "\n" + JSON.generate(entry_source) + "\n"
   }
 
