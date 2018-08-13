@@ -75,9 +75,8 @@ Parameters:
   LogstashInstanceType:
     Description: Instance type for Logstash nodes
     Type: String
-    Default: t2.micro
+    Default: t2.small #t2.micro does not have enough RAM for v6.3
     AllowedValues:
-      - t2.micro
       - t2.small
       - t2.medium
       - t2.large
@@ -213,17 +212,16 @@ Resources:
           MEM_TOTAL=`awk '/MemTotal/ { print $2 }' /proc/meminfo`
           HEAP_MAX=$(($MEM_TOTAL / 2))
 
-          if [ ! -d "/var/log/logstash" ]; then mkdir -p /var/log/logstash; chown logstash /var/log/logstash; fi
+          if [ ! -d "/var/log/logstash" ]; then mkdir -p /var/log/logstash; fi
           chown -R logstash /mnt
           echo --------------------------
           echo Updating configuration...
           echo --------------------------
 
+          rm -rf /var/log/logstash/*
+          chown -R logstash.logstash  /var/log/logstash
           cat /home/install/jvm.options | sed s/-Xms256m/-Xms${!HEAP_MAX}k/ > /home/install/jvm.options.1
           cat /home/install/jvm.options.1 | sed s/-Xmx1g/-Xmx${!HEAP_MAX}k/ > /etc/logstash/jvm.options
-          mv /home/install/log4j2.properties /etc/logstash
-          mv /home/install/logstash.yml /etc/logstash
-          mv /home/install/startup.options /etc/logstash
 
           cat /home/install/conf.d/00-input-beats.conf | sed 's/{{ elasticsearch_endpoint }}/${SearchDomain.DomainEndpoint}/' > /etc/logstash/conf.d/00-input-beats.conf
 

@@ -1,0 +1,13 @@
+builders:
+  - type: docker
+    image: ubuntu:16.04
+    changes:
+      - CMD ["/bin/bash", "-c", "/usr/share/logstash/bin/logstash --config.test_and_exit --path.settings /etc/logstash; cat /var/log/logstash/logstash-plain.log"]
+    commit: true
+provisioners:
+  #always update instance and provision CLI tools
+  - type: shell
+    inline:
+    - apt-get -y update
+    - apt-get -y install openjdk-8-jre sudo curl
+    - useradd ubuntu

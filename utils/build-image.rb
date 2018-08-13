@@ -10,11 +10,18 @@ puts "Running from #{my_dir}"
 ami_name ="packerbuild_#{ARGV[0]}_#{DateTime.now.strftime('%Y%m%d%H%M%S')}"
 
 common_data=nil
-open File.expand_path(my_dir + "/../packer/packer-common.yaml"),"r" do |f|
-  common_data = YAML.load(f.read())
-end #open
+if ARGV[1]=="docker"
+  open File.expand_path(my_dir + "/../packer/packer-common-docker.yaml"),"r" do |f|
+    common_data = YAML.load(f.read())
+  end #open
+else
+  open File.expand_path(my_dir + "/../packer/packer-common.yaml"),"r" do |f|
+    common_data = YAML.load(f.read())
+  end #open
+  common_data['builders'][0]['ami_name'] = ami_name
+end
 
-common_data['builders'][0]['ami_name'] = ami_name
+
 
 specific_content = "/../packer/packer-#{ARGV[0]}.yaml"
 specific_data=nil
