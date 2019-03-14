@@ -3,11 +3,21 @@ builders:
   #ami_name is provided by the calling script
     #ami_name: \{{ ami_build_name }\}
     instance_type: t2.small
-    source_ami:  ami-4d46d534 #stock ubuntu 16.04 LTS in eu-west-1
+    #source_ami:  ami-4d46d534 #stock ubuntu 16.04 LTS in eu-west-1\\\\
+    region: "{{user `aws_region`}}"    
     ssh_username: ubuntu
+    source_ami_filter:
+      filters:
+        virtualization-type: hvm
+        name: "*ubuntu-xenial-16.04-amd64-server*"
+        root-device-type: ebs
+      owners:
+      - '099720109477'
+      most_recent: true
 provisioners:
   #always update instance and provision CLI tools
   - type: shell
     inline:
     - sudo apt-get -y update && sudo bash -c "DEBIAN_FRONTEND=noninteractive apt-get upgrade -yq"
-    - sudo apt-get -y install awscli openjdk-8-jre
+    - sudo apt-get -y install python3-pip openjdk-8-jre
+    - sudo pip3 install awscli --upgrade --user
