@@ -39,4 +39,5 @@ open packer_json_name,"w" do |f|
 end
 
 Dir.chdir(File.expand_path(my_dir + "/../packer"))
-system("packer build #{packer_json_name}")
+print("packer build '#{packer_json_name}'")
+system("packer build '#{packer_json_name}'")
