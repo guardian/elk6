@@ -16,8 +16,8 @@ provisioners:
     source: ../config/logstash/startup.options
     destination: /home/install/startup.options
   - type: file
-    source: ../config/logstash/conf.d/00-input-beats.conf
-    destination: /home/install/conf.d/00-input-beats.conf
+    source: ../config/logstash/conf.d/00-aws-integration.conf
+    destination: /home/install/conf.d/00-aws-integration.conf
   - type: shell
     inline:
       - echo Downloading and installing
@@ -31,8 +31,10 @@ provisioners:
       - sudo mv /home/install/log4j2.properties /etc/logstash
       - sudo mv /home/install/logstash.yml /etc/logstash
       - sudo mv /home/install/startup.options /etc/logstash
-      - echo Downloading filebeat
-      - curl https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-6.3.0-amd64.deb > /home/install/filebeat-6.3.0-amd64.deb
+      - echo Installing native amazon_es output plugin
+      - sudo -E /usr/share/logstash/bin/logstash-plugin install logstash-output-amazon_es
+      #- echo Downloading filebeat
+      #- curl https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-6.3.0-amd64.deb > /home/install/filebeat-6.3.0-amd64.deb
       - echo Disabling automatic start until provisioned by Cloudformation
       - sudo systemctl disable logstash
       - echo All done
@@ -46,11 +48,11 @@ provisioners:
     inline:
       #this file is a template, if it's present then the test will fail. The template is filled in during cloud-init, see the Cloudformation
       #launch config for details
-      - if [ -f "/etc/logstash/conf.d/00-input-beats.conf" ]; then mv /etc/logstash/conf.d/00-input-beats.conf /tmp; fi
+      - if [ -f "/etc/logstash/conf.d/00-aws-integration.conf" ]; then mv /etc/logstash/conf.d/00-aws-integration.conf /tmp; fi
       - sudo chown -R root /etc/logstash/conf.d
       - sudo chown -R root /etc/logstash/patterns
       #test the configuration and abort if there is a problem!
       - echo Testing configuration...
       - sudo bash -c "/usr/share/logstash/bin/logstash --config.test_and_exit --path.settings /etc/logstash; if [ "$?" != "0" ]; then cat /var/log/logstash/logstash-plain.log; exit 1; fi"
       - if [ -f "/var/log/logstash/logstash-plain.log" ]; then sudo rm -f /var/log/logstash/logstash-plain.log; fi
-      - if [ -f "/tmp/00-input-beats.conf" ]; then sudo mv /tmp/00-input-beats.conf /etc/logstash/conf.d; fi
+      - if [ -f "/tmp/00-aws-integration.conf" ]; then sudo mv /tmp/00-aws-integration.conf /etc/logstash/conf.d; fi

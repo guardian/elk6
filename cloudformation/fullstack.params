@@ -1,0 +1,102 @@
+[
+  {
+    "ParameterKey": "KeyPair",
+    "ParameterValue": "Logstash-testing"
+  },
+  {
+    "ParameterKey": "NodeStorageSize",
+    "ParameterValue": "35"
+  },
+  {
+    "ParameterKey": "ElasticsearchVersion",
+    "ParameterValue": "6.4"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "t2.medium.elasticsearch"
+  },
+  {
+    "ParameterKey": "NodeStorageType",
+    "ParameterValue": "gp2"
+  },
+  {
+    "ParameterKey": "InstanceCount",
+    "ParameterValue": "4"
+  },
+  {
+    "ParameterKey": "AutomatedDailySnapshotHour",
+    "ParameterValue": "0"
+  },
+  {
+    "ParameterKey": "LogstashBaseAmi",
+    "ParameterValue": "ami-0ff2e9c412b6f6256"
+  },
+  {
+    "ParameterKey": "LogstashInstanceType",
+    "ParameterValue": "t2.medium"
+  },
+  {
+    "ParameterKey": "LogstashAsgDesiredCap",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "LogstashAsgMaxSize",
+    "ParameterValue": "8"
+  },
+  {
+    "ParameterKey": "LogstashAsgMinSize",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "KibanaBaseAmi",
+    "ParameterValue": "ami-02839651a738700ff"
+  },
+  {
+    "ParameterKey": "KibanaFriendlyCname",
+    "ParameterValue": "logstashtesting"
+  },
+  {
+    "ParameterKey": "KibanaInstanceType",
+    "ParameterValue": "t2.medium"
+  },
+  {
+    "ParameterKey": "KibanaAsgDesiredCap",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "KibanaAsgMaxSize",
+    "ParameterValue": "8"
+  },
+  {
+    "ParameterKey": "KibanaAsgMinSize",
+    "ParameterValue": "1"
+  },      
+  {
+    "ParameterKey": "LoadBalancerCertId",
+    "ParameterValue": "arn:aws:acm:ap-southeast-2:932911914880:certificate/78ad41cf-8464-4c78-bd92-67eb54165533"
+  },
+  {
+    "ParameterKey": "VPCID",
+    "ParameterValue": "vpc-8d41bfe5"
+  },
+  {
+    "ParameterKey": "DeploySubnets",
+    "ParameterValue": "subnet-8e41bfe6,subnet-8f41bfe7"
+  },
+  {
+    "ParameterKey": "OfficeIpRange",
+    "ParameterValue": "118.209.218.245/32"
+  },
+  {
+    "ParameterKey": "Stack",
+    "ParameterValue": "logstashtesting"
+  },
+  {
+    "ParameterKey": "Stage",
+    "ParameterValue": "DEV"
+  },
+  {
+    "ParameterKey": "App",
+    "ParameterValue": "Generic"
+  }
+]

@@ -1,3 +1,4 @@
+server.basePath: /kibana
 elasticsearch:
   #preserveHost: true
   url: http://{{ elasticsearch-endpoint }}:80
