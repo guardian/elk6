@@ -118,6 +118,15 @@ Resources:
           FromPort: 80
           ToPort: 80
           IpProtocol: tcp
+        - SourceSecurityGroupId: !GetAtt PurgingLambdaSG.GroupId
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+      VpcId: !Ref VPCID
+  PurgingLambdaSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for ELK autopurge lambda
       VpcId: !Ref VPCID
   LogstashNodeSG:
     Type: AWS::EC2::SecurityGroup
@@ -557,3 +566,8 @@ Outputs:
     Value: !Sub ${KibanaLoadBalancer.DNSName}
     Export:
       Name: !Sub ${AWS::StackName}-KibanaLocation
+  PurgingLambdaSG:
+    Description: Security group that has access to ES to attach to the purging lambda
+    Value: !Sub ${PurgingLambdaSG.GroupId}
+    Export:
+      Name: !Sub ${AWS::StackName}-PurgingLambdaSG

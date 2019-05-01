@@ -3,7 +3,7 @@ builders:
   #ami_name is provided by the calling script
     #ami_name: \{{ ami_build_name }\}
     instance_type: t2.small
-    source_ami:  ami-4d46d534 #stock ubuntu 16.04 LTS in eu-west-1
+    source_ami:  ami-00035f41c82244dab #stock ubuntu 18.04 LTS in eu-west-1
     ssh_username: ubuntu
 provisioners:
   #always update instance and provision CLI tools

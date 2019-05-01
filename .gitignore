@@ -2,3 +2,5 @@
 tozap
 migration/dailymotion_hits
 migration/s3_index
+purginglambda/package
+purginglambda/function.zip
