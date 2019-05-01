@@ -58,8 +58,8 @@ Resources:
   PurgingLambdaSchedule:
     Type: AWS::Events::Rule
     Properties:
-      Description: Pick up events on the transcoding framework "flood queue"
-      ScheduleExpression: rate(1 minute)
+      Description: Purge out old filebeat indices
+      ScheduleExpression: cron(30 21 * * ? *)
       State: ENABLED
       Targets:
         - Arn: !GetAtt PurgingLambda.Arn
