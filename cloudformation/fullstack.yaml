@@ -103,7 +103,28 @@ Parameters:
     Description: ARN of an SSL certificate to use for the Kibana frontend loadbalancer
     Type: String
     AllowedPattern: arn:aws:acm:.*
+Mappings:
+  IngestDns:
+    CODE:
+      Domain: ingest.logs.code.dev-gutools.co.uk
+      TTL: 7200
+    PROD:
+      Domain: ingest.logs.gutools.co.uk
+      TTL: 600
+Conditions:
+  CreateIngestDnsRecord: !Not [!Equals [!Ref Stage, DEV]]
 Resources:
+  IngestDnsRecord:
+    Type: Guardian::DNS::RecordSet
+    Condition: CreateIngestDnsRecord
+    Properties:
+      Name: !FindInMap [IngestDns, !Ref Stage, Domain]
+      ResourceRecords:
+        - !Sub "${LogstashLoadBalancer.DNSName}."
+      TTL: !FindInMap [IngestDns, !Ref Stage, TTL]
+      RecordType: CNAME
+      Stage: !Ref Stage
+
   ### Security Groups
   ElasticsearchDomainSG:
     Type: AWS::EC2::SecurityGroup
